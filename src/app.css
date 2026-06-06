@@ -31,3 +31,40 @@ body {
 		scroll-behavior: auto !important;
 	}
 }
+
+/* Estilos de impresión: ocultar nav/botones/animaciones y mostrar el reporte
+   limpio cuando el usuario hace "Guardar como PDF" en el diálogo. */
+@media print {
+	:global(.print-hidden),
+	header nav,
+	header {
+		display: none !important;
+	}
+	:global(.print\\:hidden) {
+		display: none !important;
+	}
+	:global(button),
+	:global(input),
+	:global(textarea),
+	:global(select) {
+		display: none !important;
+	}
+	:global(ol[aria-label='Etapas del análisis']),
+	:global([role='status'][aria-busy='true']) {
+		display: none !important;
+	}
+	:global(body),
+	:global(html) {
+		background: white !important;
+		color: black !important;
+	}
+	:global(.rounded-2xl),
+	:global(.rounded-xl) {
+		box-shadow: none !important;
+		border-color: #d4d4d4 !important;
+	}
+	@page {
+		margin: 1.5cm;
+		size: letter;
+	}
+}

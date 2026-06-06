@@ -147,6 +147,13 @@ function parseModelOutput(raw: string): { semaforo: SemaforoResultado; reporte_m
 
 /** Genera el análisis de viabilidad para el negocio del usuario. */
 export async function analizarViabilidad(negocio: NegocioAnalizar): Promise<AnalisisResultado> {
+	// Modo simulación: si SIMULATE_VIABILIDAD=true en el entorno, devolvemos
+	// una respuesta sintética determinista sin llamar a Gemini. Útil para
+	// demos, CI y desarrollo sin gastar cuota. NO usar en producción.
+	if (env.SIMULATE_VIABILIDAD === 'true') {
+		return respuestaSintetica(negocio, dataset.establecimientos);
+	}
+
 	const apiKey = env.GEMINI_API_KEY;
 	if (!apiKey) {
 		throw new ViabilidadError(
@@ -204,4 +211,113 @@ ${JSON.stringify(relevantes, null, 2)}
 		}
 		throw new ViabilidadError(`Error del modelo: ${msg}`, 'UPSTREAM');
 	}
+}
+
+/**
+ * Respuesta sintética determinista para el modo SIMULATE_VIABILIDAD=true.
+ * NO usa el LLM: calcula el semáforo por reglas sobre los mismos campos que
+ * `competidoresRelevantes` y emite un reporte de plantilla. Útil para
+ * demos, CI y desarrollo local sin GEMINI_API_KEY.
+ */
+function respuestaSintetica(
+	negocio: NegocioAnalizar,
+	establecimientos: EstablecimientoDenue[]
+): AnalisisResultado {
+	const giroLower = negocio.giro.toLowerCase();
+	const ramoLower = negocio.ramo.toLowerCase();
+
+	// Score de cada establecimiento respecto al negocio.
+	const scored = establecimientos.map((e) => {
+		const clase = e.clase_actividad.toLowerCase();
+		const subsector = e.id_subsector_actividad;
+		const ramo = e.id_rama_actividad;
+		let s = 0;
+		if (ramo && ramo === e.id_rama_actividad) s += 5;
+		if (subsector && subsector === e.id_subsector_actividad) s += 3;
+		if (giroLower === 'servicios' && subsector === '722') s += 1;
+		if (giroLower === 'comercial' && subsector === '461') s += 1;
+		if (ramoLower && clase.includes(ramoLower)) s += 2;
+		for (const w of ramoLower.split(/\s+/).filter((w) => w.length > 3)) {
+			if (clase.includes(w)) s += 1;
+		}
+		return { e, s };
+	});
+
+	const directos = scored.filter((x) => x.s >= 5).length;
+	const cercanos = scored.filter((x) => x.s >= 3 && x.s < 5).length;
+	const maxScore = scored.reduce((m, x) => (x.s > m ? x.s : m), 0);
+
+	const relevantes = scored
+		.sort((a, b) => b.s - a.s)
+		.slice(0, 5)
+		.map((x) => x.e);
+
+	// Reglas deterministas:
+	// 0 directos + 0 cercanos → verde
+	// 1 directo  ó   2+ cercanos → amarillo
+	// 2+ directos                 → rojo
+	let color: SemaforoColor;
+	let score: number;
+	let razon: string;
+	if (directos >= 2) {
+		color = 'rojo';
+		score = 28;
+		razon = `Competencia directa alta: ${directos} establecimientos del mismo giro en la zona.`;
+	} else if (directos === 1 || cercanos >= 2) {
+		color = 'amarillo';
+		score = 55;
+		razon =
+			directos === 1
+				? `Competencia directa presente; requiere diferenciación clara.`
+				: `Varios competidores indirectos en la zona.`;
+	} else {
+		color = 'verde';
+		score = 78;
+		razon = `Baja competencia directa en la zona para el giro ${negocio.giro}.`;
+	}
+
+	const alertas: string[] = [];
+	if (directos > 0) {
+		const nombresDirectos = scored
+			.filter((x) => x.s >= 5)
+			.slice(0, 3)
+			.map((x) => x.e.nombre);
+		alertas.push(`Competidores directos: ${nombresDirectos.join(', ')}.`);
+	}
+	if (cercanos > 0) {
+		const nombresCercanos = scored
+			.filter((x) => x.s >= 3 && x.s < 5)
+			.slice(0, 3)
+			.map((x) => x.e.nombre);
+		alertas.push(`Competidores indirectos: ${nombresCercanos.join(', ')}.`);
+	}
+	if (maxScore === 0) {
+		alertas.push(
+			'El dataset DENUE no tiene registros del giro consultado; la evaluación es limitada.'
+		);
+	}
+
+	const nombresRelevantes = relevantes.map((e) => `**${e.nombre}**`).join(', ');
+	const reporte = `## Resumen de viabilidad
+
+El negocio **${negocio.nombre}** (${negocio.giro} / ${negocio.ramo}) en **${negocio.zona}** obtiene un semáforo **${color.toUpperCase()}** con score ${score}/100 según las reglas sintéticas aplicadas al dataset DENUE adjunto (${establecimientos.length} establecimientos).
+
+## Competencia considerada
+
+Los establecimientos DENUE más relevantes para el giro consultado son: ${nombresRelevantes || 'sin coincidencias'}. Se identificaron **${directos}** competidores directos (misma rama SCIAN) y **${cercanos}** competidores indirectos (mismo subsector) en la zona.
+
+## Recomendaciones
+
+- Si la viabilidad es **verde**: hay espacio para entrar, pero valida la afluencia real de la zona con trabajo de campo.
+- Si es **amarillo**: necesitas una propuesta de valor diferenciada (menú único, precio, servicio, ambiente).
+- Si es **rojo**: considera reubicar o pivotar el giro; la zona ya está saturada para ${negocio.ramo}.
+
+_Modo simulación activo: este reporte fue generado por reglas deterministas, no por IA. Configura GEMINI_API_KEY y desactiva SIMULATE_VIABILIDAD para usar Gemini._`;
+
+	return {
+		semaforo: { color, score, razon, alertas },
+		reporte_markdown: reporte,
+		competencia_considerada: relevantes,
+		generado_en: new Date().toISOString()
+	};
 }

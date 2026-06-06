@@ -89,19 +89,50 @@
 	}
 
 	const bloques = $derived(parsear(markdown));
+
+	/** Guarda el reporte como PDF usando el diálogo de impresión del navegador. */
+	function descargarPdf() {
+		// En el navegador, el usuario elige "Guardar como PDF" en el diálogo.
+		window.print();
+	}
 </script>
 
 <section
 	aria-label="Reporte de viabilidad"
 	class="rounded-2xl border border-neutral-200 bg-white p-6 shadow-sm"
 >
-	<header class="mb-4">
-		<h2 class="text-sm font-semibold tracking-wide text-neutral-500 uppercase">
-			Reporte de viabilidad
-		</h2>
-		<p class="mt-1 text-xs text-neutral-500">
-			Generado por IA con base en el dataset DENUE de la zona.
-		</p>
+	<header class="mb-4 flex items-start justify-between gap-4">
+		<div>
+			<h2 class="text-sm font-semibold tracking-wide text-neutral-500 uppercase">
+				Reporte de viabilidad
+			</h2>
+			<p class="mt-1 text-xs text-neutral-500">
+				Generado por IA con base en el dataset DENUE de la zona.
+			</p>
+		</div>
+		<button
+			type="button"
+			onclick={descargarPdf}
+			class="print:hidden flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-xs font-medium text-neutral-700 transition hover:border-gob hover:bg-gob-soft hover:text-gob-dark"
+			aria-label="Descargar reporte como PDF"
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+				class="h-3.5 w-3.5"
+				aria-hidden="true"
+			>
+				<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+				<polyline points="7 10 12 15 17 10" />
+				<line x1="12" y1="15" x2="12" y2="3" />
+			</svg>
+			Descargar PDF
+		</button>
 	</header>
 
 	<div class="prose-sm space-y-3 text-sm leading-relaxed text-neutral-800">

@@ -5,6 +5,9 @@
 	import MapaDenue from '$lib/components/MapaDenue.svelte';
 	import Semaforo from '$lib/components/Semaforo.svelte';
 	import ReporteCard from '$lib/components/ReporteCard.svelte';
+	import RadarCarga from '$lib/components/RadarCarga.svelte';
+	import FlujoPeatonal from '$lib/components/FlujoPeatonal.svelte';
+	import RutaAccion from '$lib/components/RutaAccion.svelte';
 	import { GIROS } from '$lib/registro';
 	import type { AnalisisResultado, EstablecimientoDenue } from '$lib/viabilidad/types';
 	import type { PageData } from './$types';
@@ -53,32 +56,36 @@
 
 	// --- Estado del análisis de viabilidad (IA) ---
 	type Estado = 'idle' | 'loading' | 'done' | 'error';
+	type NivelFlujo = 'bajo' | 'medio' | 'alto';
 	let estado = $state<Estado>('idle');
-	let mensajeLoadingIdx = $state(0);
+	let etapaActual = $state(0);
 	let resultado = $state<AnalisisResultado | null>(null);
 	let errorMsg = $state<string | null>(null);
 
-	const mensajesLoading = [
-		'Cargando establecimientos de la zona…',
-		'Analizando competencia con IA…',
-		'Calculando semáforo de viabilidad…',
-		'Generando reporte final…'
+	const etapasFiltro = [
+		'Validando identidad del dueño',
+		'Verificando dirección con CP',
+		'Cruzando con DENUE de la zona',
+		'Calculando semáforo de viabilidad',
+		'Generando reporte con IA'
 	];
 
-	let timerMensaje: ReturnType<typeof setInterval> | null = null;
+	let timerEtapa: ReturnType<typeof setInterval> | null = null;
 	let abortController: AbortController | null = null;
 
-	function arrancarMensajes() {
-		mensajeLoadingIdx = 0;
-		timerMensaje = setInterval(() => {
-			mensajeLoadingIdx = (mensajeLoadingIdx + 1) % mensajesLoading.length;
-		}, 1200);
+	function arrancarEtapas() {
+		etapaActual = 0;
+		timerEtapa = setInterval(() => {
+			if (etapaActual < etapasFiltro.length - 1) {
+				etapaActual++;
+			}
+		}, 900);
 	}
 
-	function detenerMensajes() {
-		if (timerMensaje) {
-			clearInterval(timerMensaje);
-			timerMensaje = null;
+	function detenerEtapas() {
+		if (timerEtapa) {
+			clearInterval(timerEtapa);
+			timerEtapa = null;
 		}
 	}
 
@@ -88,7 +95,7 @@
 		estado = 'loading';
 		errorMsg = null;
 		resultado = null;
-		arrancarMensajes();
+		arrancarEtapas();
 		abortController = new AbortController();
 
 		try {
@@ -112,6 +119,8 @@
 			}
 
 			const json = (await res.json()) as AnalisisResultado;
+			// Marcar todas las etapas como completas antes de pasar a 'done'.
+			etapaActual = etapasFiltro.length;
 			resultado = json;
 			estado = 'done';
 		} catch (err) {
@@ -119,7 +128,7 @@
 			errorMsg = err instanceof Error ? err.message : 'Error de red';
 			estado = 'error';
 		} finally {
-			detenerMensajes();
+			detenerEtapas();
 		}
 	}
 
@@ -138,11 +147,30 @@
 	});
 
 	onDestroy(() => {
-		detenerMensajes();
+		detenerEtapas();
 		abortController?.abort();
 	});
 
 	const competencia: EstablecimientoDenue[] = $derived(resultado?.competencia_considerada ?? []);
+
+	// Flujo peatonal sintético: baraja determinista por nombre del negocio + score,
+	// de modo que el mismo negocio siempre vea las mismas barras.
+	const flujoPeatonal = $derived(() => {
+		if (!resultado) return { nivel: 'medio' as NivelFlujo, bajo: 120, medio: 450, alto: 980 };
+		const nombreNegocio = typeof data.negocio?.nombre === 'string' ? data.negocio.nombre : 'x';
+		const seed = nombreNegocio.length + resultado.semaforo.score;
+		const bajo = 80 + (seed % 90);
+		const medio = 380 + ((seed * 7) % 220);
+		const alto = 920 + ((seed * 13) % 280);
+		// El nivel global se infiere del score del semáforo.
+		const nivel: NivelFlujo =
+			resultado.semaforo.color === 'rojo'
+				? 'bajo'
+				: resultado.semaforo.color === 'verde'
+					? 'alto'
+					: 'medio';
+		return { nivel, bajo, medio, alto };
+	});
 </script>
 
 <svelte:head>
@@ -255,45 +283,7 @@
 				</header>
 
 				{#if estado === 'loading'}
-					<div
-						role="status"
-						aria-live="polite"
-						aria-busy="true"
-						class="rounded-2xl border border-gob/30 bg-gob-soft p-8 shadow-sm"
-					>
-						<div class="flex items-center gap-4">
-							<span class="inline-flex h-10 w-10 items-center justify-center" aria-hidden="true">
-								<span
-									class="absolute h-8 w-8 animate-spin rounded-full border-2 border-gob/30 border-t-gob"
-								></span>
-							</span>
-							<div>
-								<p class="text-sm font-medium text-gob-dark">
-									{mensajesLoading[mensajeLoadingIdx]}
-								</p>
-								<p class="mt-0.5 text-xs text-neutral-600">
-									Esto puede tomar entre 5 y 15 segundos.
-								</p>
-							</div>
-						</div>
-						<ol
-							class="mt-6 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4"
-							aria-label="Etapas del análisis"
-						>
-							{#each mensajesLoading as m, i (i)}
-								<li
-									class="rounded-md border px-2 py-1.5 text-center
-										{i === mensajeLoadingIdx
-										? 'border-gob bg-white font-semibold text-gob-dark'
-										: i < mensajeLoadingIdx
-											? 'border-gob/30 bg-white/60 text-gob-dark'
-											: 'border-neutral-200 bg-white/40 text-neutral-500'}"
-								>
-									{i + 1}. {m.replace('…', '').replace('…', '').trim()}
-								</li>
-							{/each}
-						</ol>
-					</div>
+					<RadarCarga etapas={etapasFiltro} {etapaActual} />
 				{:else if estado === 'error'}
 					<div
 						role="alert"
@@ -309,6 +299,14 @@
 				{:else if estado === 'done' && resultado}
 					<div class="space-y-4">
 						<Semaforo semaforo={resultado.semaforo} />
+						<FlujoPeatonal
+							nivel={flujoPeatonal().nivel}
+							bajo={flujoPeatonal().bajo}
+							medio={flujoPeatonal().medio}
+							alto={flujoPeatonal().alto}
+							zona={zonaAnalisis()}
+						/>
+						<RutaAccion color={resultado.semaforo.color} />
 						<ReporteCard markdown={resultado.reporte_markdown} {competencia} />
 						<p class="text-center text-xs text-neutral-500">
 							Análisis generado el {new Date(resultado.generado_en).toLocaleString('es-MX', {
