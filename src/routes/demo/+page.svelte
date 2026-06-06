@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import SiteHeader from '$lib/components/SiteHeader.svelte';
 	import MapaDenue from '$lib/components/MapaDenue.svelte';
 	import Semaforo from '$lib/components/Semaforo.svelte';
@@ -57,7 +57,14 @@
 	// --- Estado del análisis de viabilidad (IA) ---
 	type Estado = 'idle' | 'loading' | 'done' | 'error';
 	type NivelFlujo = 'bajo' | 'medio' | 'alto';
-	let estado = $state<Estado>('idle');
+	// Si ya hay un negocio válido en la sesión, arrancamos en 'loading' desde
+	// el SSR para que el RadarCarga se renderice en el HTML inicial y no haya
+	// un hueco visible entre el banner verde y el resultado de la IA. untrack()
+	// evita el warning de "captura el valor inicial": queremos ese valor, no
+	// reactividad — si data cambia, onMount ya maneja el re-arranque.
+	let estado = $state<Estado>(
+		untrack(() => (data.usuario && esNegocioValido(data.negocio) ? 'loading' : 'idle'))
+	);
 	let etapaActual = $state(0);
 	let resultado = $state<AnalisisResultado | null>(null);
 	let errorMsg = $state<string | null>(null);
