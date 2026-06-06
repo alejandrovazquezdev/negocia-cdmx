@@ -2,6 +2,7 @@
 	import { resolve } from '$app/paths';
 	import { onMount, onDestroy } from 'svelte';
 	import SiteHeader from '$lib/components/SiteHeader.svelte';
+	import MapaDenue from '$lib/components/MapaDenue.svelte';
 	import Semaforo from '$lib/components/Semaforo.svelte';
 	import ReporteCard from '$lib/components/ReporteCard.svelte';
 	import { GIROS } from '$lib/registro';
@@ -17,6 +18,9 @@
 		tiene_razon_social: number;
 		razon_social: string | null;
 		rfc: string | null;
+		cp: string | null;
+		calle: string | null;
+		colonia: string | null;
 	} {
 		if (!v || typeof v !== 'object') return false;
 		const n = v as Record<string, unknown>;
@@ -32,7 +36,22 @@
 		typeof data.negocio?.giro === 'string' ? data.negocio.giro : 'servicios'
 	);
 
-	// --- Estado del análisis ---
+	// Palabra clave para DENUE: ramo específico o giro genérico como fallback.
+	const keyword = $derived(
+		esNegocioValido(data.negocio)
+			? (data.negocio.ramo?.toLowerCase() ?? data.negocio.giro ?? 'comercio')
+			: 'comercio'
+	);
+
+	// Zona para el análisis de IA: colonia + alcaldía inferida del CP.
+	const zonaAnalisis = $derived(() => {
+		if (!esNegocioValido(data.negocio)) return 'CDMX';
+		const colonia = data.negocio.colonia ?? '';
+		const cp = data.negocio.cp ?? '';
+		return [colonia, cp ? `CP ${cp}` : ''].filter(Boolean).join(', ') || 'CDMX';
+	});
+
+	// --- Estado del análisis de viabilidad (IA) ---
 	type Estado = 'idle' | 'loading' | 'done' | 'error';
 	let estado = $state<Estado>('idle');
 	let mensajeLoadingIdx = $state(0);
@@ -81,7 +100,7 @@
 						nombre: data.negocio.nombre,
 						giro: giroValue,
 						ramo: data.negocio.ramo ?? 'Sin ramo',
-						zona: 'Del Valle, Benito Juárez, CDMX'
+						zona: zonaAnalisis()
 					}
 				}),
 				signal: abortController.signal
@@ -197,7 +216,30 @@
 				</div>
 			</div>
 
-			<!-- Análisis de viabilidad -->
+			<!-- Sección de negocios aledaños con DENUE (mapa del equipo) -->
+			<div class="mt-6 overflow-hidden rounded-xl border border-neutral-200 bg-white">
+				<div class="flex items-center justify-between gap-4 border-b border-neutral-200 px-6 py-4">
+					<div>
+						<h2 class="text-sm font-semibold tracking-wide text-neutral-500 uppercase">
+							Negocios aledaños
+						</h2>
+						<p class="mt-1 text-sm text-neutral-600">
+							Competencia dentro de 1 km en el giro <strong>{giroLabel}</strong> — datos del DENUE · INEGI.
+						</p>
+					</div>
+					<span class="hidden text-xs text-neutral-400 sm:block">DENUE · INEGI</span>
+				</div>
+				<div class="p-6">
+					<MapaDenue
+						cp={data.negocio.cp}
+						calle={data.negocio.calle}
+						colonia={data.negocio.colonia}
+						{keyword}
+					/>
+				</div>
+			</div>
+
+			<!-- Análisis de viabilidad (IA + semáforo) -->
 			<section class="mt-8" aria-label="Análisis de viabilidad">
 				<header class="mb-4 flex items-center justify-between">
 					<h2 class="text-lg font-semibold text-neutral-900">Análisis de viabilidad</h2>

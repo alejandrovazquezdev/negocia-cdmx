@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { db } from '$lib/db';
+import { getDb } from '$lib/db';
 import type { Actions } from './$types';
 
 export const actions: Actions = {
@@ -33,6 +33,7 @@ export const actions: Actions = {
 			return fail(400, { error: 'Faltan campos obligatorios.' });
 		}
 
+		const db = getDb();
 		const existente = db.prepare('SELECT id FROM usuarios WHERE correo = ?').get(correo);
 		if (existente) {
 			return fail(400, { error: 'Ya existe una cuenta con ese correo.' });

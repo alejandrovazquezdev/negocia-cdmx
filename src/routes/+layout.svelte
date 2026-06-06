@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
+	import FeedbackButton from '$lib/components/FeedbackButton.svelte';
 
 	let { children } = $props();
 </script>
@@ -19,3 +20,5 @@
 <main id="main" class="contents">
 	{@render children()}
 </main>
+
+<FeedbackButton />

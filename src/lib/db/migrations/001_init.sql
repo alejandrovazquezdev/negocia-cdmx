@@ -26,6 +26,9 @@ CREATE TABLE IF NOT EXISTS negocios (
   rfc                TEXT,
   giro               TEXT CHECK (giro IN ('industrial', 'comercial', 'servicios')),
   ramo               TEXT,
+  cp                 TEXT,
+  calle              TEXT,
+  colonia            TEXT,
   created_at         TEXT DEFAULT (datetime('now'))
 );
 
@@ -63,3 +66,22 @@ CREATE TABLE IF NOT EXISTS programas (
   fecha_inicio TEXT,
   fecha_fin    TEXT
 );
+
+-- Feedback: reportes de bugs y sugerencias de features (widget flotante)
+CREATE TABLE IF NOT EXISTS feedback (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind        TEXT NOT NULL CHECK (kind IN ('bug', 'feature')),
+  title       TEXT NOT NULL,
+  body        TEXT,
+  route       TEXT NOT NULL DEFAULT '/',
+  user_agent  TEXT,
+  status      TEXT NOT NULL DEFAULT 'abierto'
+                CHECK (status IN ('abierto', 'en_progreso', 'cerrado')),
+  created_by  INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  created_at  TEXT DEFAULT (datetime('now')),
+  resolved_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS feedback_status_idx  ON feedback(status);
+CREATE INDEX IF NOT EXISTS feedback_kind_idx    ON feedback(kind);
+CREATE INDEX IF NOT EXISTS feedback_created_idx ON feedback(created_at);

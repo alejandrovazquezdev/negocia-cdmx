@@ -1,5 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { db } from '$lib/db';
+import { getDb } from '$lib/db';
 import type { Actions } from './$types';
 
 export const actions: Actions = {
@@ -12,7 +12,7 @@ export const actions: Actions = {
 			return fail(400, { error: 'Correo y contraseña son obligatorios.' });
 		}
 
-		const usuario = db
+		const usuario = getDb()
 			.prepare('SELECT id, password_hash FROM usuarios WHERE correo = ?')
 			.get(correo) as { id: number; password_hash: string } | undefined;
 

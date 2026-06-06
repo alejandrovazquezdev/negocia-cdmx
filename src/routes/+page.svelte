@@ -42,12 +42,6 @@
 			>
 				Iniciar sesión
 			</a>
-			<a
-				href={resolve('/demo')}
-				class="w-full rounded-lg border border-neutral-300 px-8 py-3 text-center font-semibold text-neutral-700 transition hover:bg-neutral-100 sm:w-auto"
-			>
-				Ver demo
-			</a>
 		</div>
 	</section>
 
