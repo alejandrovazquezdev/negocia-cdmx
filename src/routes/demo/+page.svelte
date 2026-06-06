@@ -1,33 +1,31 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import SiteHeader from '$lib/components/SiteHeader.svelte';
-	import { GIROS, RAMOS, type Registro } from '$lib/registro';
-	import { registroStore } from '$lib/registro.svelte';
+	import { GIROS } from '$lib/registro';
+	import type { PageData } from './$types';
 
-	// Validación defensiva del store. Aunque el tipo es `Registro | null`,
-	// si el archivo es importado por terceros o extendido en runtime, podría
-	// llegar con una forma distinta.
-	function esRegistroValido(v: unknown): v is Registro {
+	let { data }: { data: PageData } = $props();
+
+	// Validación defensiva del load. Aunque la forma viene del server con tipos,
+	// un cambio de esquema o un partial en runtime podría dejar campos faltantes.
+	function esNegocioValido(v: unknown): v is {
+		nombre: string;
+		giro: string;
+		ramo: string | null;
+		tiene_razon_social: number;
+		razon_social: string | null;
+		rfc: string | null;
+	} {
 		if (!v || typeof v !== 'object') return false;
-		const r = v as Partial<Registro>;
+		const n = v as Record<string, unknown>;
 		return (
-			!!r.dueno &&
-			!!r.negocio &&
-			typeof r.dueno.nombre === 'string' &&
-			typeof r.negocio.nombre === 'string'
+			typeof n.nombre === 'string' &&
+			typeof n.giro === 'string' &&
+			(n.tiene_razon_social === 0 || n.tiene_razon_social === 1)
 		);
 	}
 
-	const registro = $derived.by(() => {
-		const v = registroStore.actual;
-		return esRegistroValido(v) ? v : null;
-	});
-
-	const giroLabel = $derived(
-		registro ? (GIROS.find((g) => g.value === registro.negocio.giro)?.label ?? '—') : '—'
-	);
-
-	const ramoValido = $derived(registro ? RAMOS.includes(registro.negocio.ramo) : false);
+	const giroLabel = $derived(GIROS.find((g) => g.value === data.negocio?.giro)?.label ?? '—');
 </script>
 
 <svelte:head>
@@ -40,12 +38,14 @@
 	</SiteHeader>
 
 	<div class="mx-auto max-w-3xl px-6 py-10">
-		{#if registro}
+		{#if data.usuario && esNegocioValido(data.negocio)}
 			<div
+				role="status"
+				aria-live="polite"
 				class="mb-6 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800"
 			>
-				¡Registro completo, {registro.dueno.nombre}! Este es un adelanto del análisis que
-				prepararemos para <strong>{registro.negocio.nombre}</strong>.
+				¡Registro completo, {data.usuario.nombre}! Este es un adelanto del análisis que prepararemos
+				para <strong>{data.negocio.nombre}</strong>.
 			</div>
 
 			<div class="grid gap-4 sm:grid-cols-2">
@@ -55,18 +55,18 @@
 						<div>
 							<dt class="inline text-neutral-500">Nombre:</dt>
 							<dd class="inline">
-								{registro.dueno.nombre}
-								{registro.dueno.apellidoPaterno}
-								{registro.dueno.apellidoMaterno ?? ''}
+								{data.usuario.nombre}
+								{data.usuario.apellido_pat}
+								{data.usuario.apellido_mat ?? ''}
 							</dd>
 						</div>
 						<div>
 							<dt class="inline text-neutral-500">Teléfono:</dt>
-							<dd class="inline">{registro.dueno.telefono}</dd>
+							<dd class="inline">{data.usuario.telefono}</dd>
 						</div>
 						<div>
 							<dt class="inline text-neutral-500">Correo:</dt>
-							<dd class="inline">{registro.dueno.correo}</dd>
+							<dd class="inline">{data.usuario.correo}</dd>
 						</div>
 					</dl>
 				</div>
@@ -77,7 +77,7 @@
 					<dl class="space-y-1 text-sm">
 						<div>
 							<dt class="inline text-neutral-500">Nombre:</dt>
-							<dd class="inline">{registro.negocio.nombre}</dd>
+							<dd class="inline">{data.negocio.nombre}</dd>
 						</div>
 						<div>
 							<dt class="inline text-neutral-500">Giro:</dt>
@@ -85,13 +85,13 @@
 						</div>
 						<div>
 							<dt class="inline text-neutral-500">Ramo:</dt>
-							<dd class="inline">{ramoValido ? registro.negocio.ramo : '—'}</dd>
+							<dd class="inline">{data.negocio.ramo ?? '—'}</dd>
 						</div>
 						<div>
 							<dt class="inline text-neutral-500">Figura moral:</dt>
 							<dd class="inline">
-								{registro.negocio.tieneRazonSocial
-									? `${registro.negocio.razonSocial} (RFC ${registro.negocio.rfc})`
+								{data.negocio.tiene_razon_social === 1
+									? `${data.negocio.razon_social ?? ''} (RFC ${data.negocio.rfc ?? ''})`
 									: 'Persona física / por constituir'}
 							</dd>
 						</div>

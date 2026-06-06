@@ -134,21 +134,3 @@ export function advertenciaRFC(rfc: string): string | null {
 export function errorDe(errores: ValidationError[], field: string): string | undefined {
 	return errores.find((er) => er.field === field)?.message;
 }
-
-// --- Hook de persistencia (stub) ---
-
-/**
- * Punto único donde conectar el backend en el futuro.
- * Hoy es no-op: no persistimos datos personales en storage del cliente (riesgo XSS).
- *
- * TODO(backend):
- *   - Reemplazar el cuerpo por un POST al endpoint correspondiente.
- *   - Manejar errores de red y de validación del servidor.
- *   - Si la respuesta incluye un id, anexarlo a `Registro`.
- */
-export async function preparePersistRegistro(r: Registro): Promise<void> {
-	// `r` se referencia para que ESLint no marque el parámetro; cuando exista backend,
-	// este cuerpo hará POST con `r`.
-	void r;
-	await Promise.resolve();
-}

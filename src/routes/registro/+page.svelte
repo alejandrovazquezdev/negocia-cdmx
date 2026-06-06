@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import SiteHeader from '$lib/components/SiteHeader.svelte';
 	import Field from '$lib/components/Field.svelte';
@@ -11,29 +11,29 @@
 		advertenciaRFC,
 		errorDe,
 		nuevoRegistro,
-		preparePersistRegistro,
 		validarDueno,
 		validarNegocio,
 		type ValidationError
 	} from '$lib/registro';
-	import { registroStore } from '$lib/registro.svelte';
+	import type { ActionData } from './$types';
+
+	let { form }: { form: ActionData } = $props();
 
 	const PASOS = ['Dueño del negocio', 'Tu negocio'] as const;
 
 	let paso = $state(0);
 	let registro = $state(nuevoRegistro());
+	let password = $state('');
 	let errores = $state<ValidationError[]>([]);
 	let advertenciaRfcActiva = $state<string | null>(null);
 	let consent = $state(false);
 	let enviando = $state(false);
 	let formEl = $state<HTMLFormElement | null>(null);
 
-	// Derivados de ramos según el giro elegido.
 	const ramosDisponibles = $derived(
 		registro.negocio.giro ? RAMOS_POR_GIRO[registro.negocio.giro] : []
 	);
 
-	// Al desmarcar razón social, limpiar los campos asociados.
 	function onRazonSocialChange(e: Event) {
 		const checked = (e.currentTarget as HTMLInputElement).checked;
 		registro.negocio.tieneRazonSocial = checked;
@@ -44,7 +44,6 @@
 		}
 	}
 
-	// Al cambiar de ramo fuera de la jerarquía del giro (caso edge), limpiarlo.
 	$effect(() => {
 		if (registro.negocio.giro && registro.negocio.ramo) {
 			const ok = RAMOS_POR_GIRO[registro.negocio.giro].includes(registro.negocio.ramo);
@@ -52,7 +51,7 @@
 		}
 	});
 
-	async function continuar() {
+	function continuar() {
 		errores = validarDueno(registro.dueno);
 		if (errores.length > 0) {
 			enfocarPrimerError();
@@ -65,7 +64,6 @@
 					message: 'Debes aceptar el aviso de privacidad para continuar.'
 				}
 			];
-			// Foco al checkbox de consentimiento.
 			document.getElementById('consent')?.focus();
 			return;
 		}
@@ -78,26 +76,7 @@
 		paso = 0;
 	}
 
-	async function enviar() {
-		if (enviando) return;
-		errores = validarNegocio(registro.negocio);
-		if (errores.length > 0) {
-			enfocarPrimerError();
-			return;
-		}
-
-		enviando = true;
-		try {
-			await preparePersistRegistro(registro);
-			registroStore.set(registro);
-			await goto(resolve('/demo'));
-		} finally {
-			enviando = false;
-		}
-	}
-
 	function enfocarPrimerError() {
-		// Espera al siguiente tick para que el DOM pinte los aria-invalid=true.
 		queueMicrotask(() => {
 			const el = formEl?.querySelector<HTMLElement>('[aria-invalid="true"]');
 			if (el) {
@@ -118,7 +97,6 @@
 	</SiteHeader>
 
 	<div class="mx-auto max-w-2xl px-6 py-10">
-		<!-- Indicador de pasos -->
 		<ol class="mb-8 flex items-center gap-4" aria-label="Progreso del registro">
 			{#each PASOS as etiqueta, i (etiqueta)}
 				<li class="flex items-center gap-2" aria-current={i === paso ? 'step' : undefined}>
@@ -156,10 +134,35 @@
 			</div>
 		{/if}
 
+		{#if form?.error}
+			<div
+				role="alert"
+				aria-live="polite"
+				class="mb-6 rounded-lg border border-gob/30 bg-gob-soft px-4 py-3 text-sm text-gob-dark"
+			>
+				{form.error}
+			</div>
+		{/if}
+
 		<form
 			bind:this={formEl}
-			novalidate
+			method="POST"
+			use:enhance={() => {
+				enviando = true;
+				return async ({ update }) => {
+					await update();
+					enviando = false;
+				};
+			}}
+			onsubmit={(e) => {
+				errores = validarNegocio(registro.negocio);
+				if (errores.length > 0) {
+					e.preventDefault();
+					enfocarPrimerError();
+				}
+			}}
 			class="rounded-2xl border border-neutral-200 bg-white p-6 sm:p-8"
+			aria-busy={enviando}
 		>
 			{#if paso === 0}
 				<h2 class="mb-1 text-xl font-semibold text-neutral-900">Datos del dueño</h2>
@@ -180,7 +183,7 @@
 					</div>
 					<Field
 						label="Apellido paterno"
-						name="apellidoPaterno"
+						name="apellido_pat"
 						autocomplete="family-name"
 						bind:value={registro.dueno.apellidoPaterno}
 						required
@@ -188,7 +191,7 @@
 					/>
 					<Field
 						label="Apellido materno"
-						name="apellidoMaterno"
+						name="apellido_mat"
 						autocomplete="additional-name"
 						bind:value={
 							() => registro.dueno.apellidoMaterno ?? '',
@@ -220,6 +223,17 @@
 						required
 						error={errorDe(errores, 'correo')}
 					/>
+					<div class="sm:col-span-2">
+						<Field
+							label="Contraseña"
+							name="password"
+							type="password"
+							bind:value={password}
+							autocomplete="new-password"
+							required
+							error={errorDe(errores, 'password')}
+						/>
+					</div>
 				</div>
 
 				<div class="mt-6">
@@ -261,19 +275,26 @@
 					</button>
 				</div>
 			{:else}
+				<!-- Paso 1: hidden inputs para enviar los datos del dueño en el POST final -->
+				<input type="hidden" name="nombre" value={registro.dueno.nombre} />
+				<input type="hidden" name="apellido_pat" value={registro.dueno.apellidoPaterno} />
+				<input type="hidden" name="apellido_mat" value={registro.dueno.apellidoMaterno ?? ''} />
+				<input type="hidden" name="telefono" value={registro.dueno.telefono} />
+				<input type="hidden" name="correo" value={registro.dueno.correo} />
+				<input type="hidden" name="password" value={password} />
+
 				<h2 class="mb-1 text-xl font-semibold text-neutral-900">Datos del negocio</h2>
 				<p class="mb-6 text-sm text-neutral-500">Información de la empresa que quieres abrir.</p>
 
 				<div class="grid gap-4">
 					<Field
 						label="Nombre del negocio"
-						name="nombreNegocio"
+						name="nombre_negocio"
 						bind:value={registro.negocio.nombre}
 						required
 						error={errorDe(errores, 'nombre')}
 					/>
 
-					<!-- Checkbox de razón social -->
 					<label
 						class="flex items-start gap-3 rounded-lg border border-neutral-300 p-3 transition hover:border-gob"
 					>
@@ -291,13 +312,13 @@
 						</span>
 					</label>
 
-					<!-- Campos dinámicos según la respuesta -->
 					{#if registro.negocio.tieneRazonSocial}
+						<input type="hidden" name="tiene_razon_social" value="true" />
 						<div class="grid gap-4 rounded-lg bg-neutral-50 p-4 sm:grid-cols-2">
 							<div class="sm:col-span-2">
 								<Field
 									label="Razón social"
-									name="razonSocial"
+									name="razon_social"
 									bind:value={registro.negocio.razonSocial}
 									required
 									error={errorDe(errores, 'razonSocial')}
@@ -327,10 +348,10 @@
 							</div>
 						</div>
 					{:else}
+						<input type="hidden" name="tiene_razon_social" value="false" />
 						<SasInfo />
 					{/if}
 
-					<!-- Giro -->
 					<fieldset>
 						<legend class="mb-1 block text-sm font-medium text-neutral-700">
 							Giro <span class="text-gob" aria-hidden="true">*</span>
@@ -366,7 +387,6 @@
 						{/if}
 					</fieldset>
 
-					<!-- Ramo -->
 					<label class="block">
 						<span class="mb-1 block text-sm font-medium text-neutral-700">
 							Ramo <span class="text-gob" aria-hidden="true">*</span>
@@ -406,10 +426,8 @@
 						Regresar
 					</button>
 					<button
-						type="button"
-						onclick={enviar}
+						type="submit"
 						disabled={enviando}
-						aria-busy={enviando}
 						class="rounded-lg bg-gob px-6 py-2.5 font-semibold text-white transition hover:bg-gob-dark disabled:cursor-not-allowed disabled:opacity-60"
 					>
 						{enviando ? 'Enviando…' : 'Finalizar registro'}
