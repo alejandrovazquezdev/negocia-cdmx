@@ -461,9 +461,7 @@
 
 					<!-- Dirección del negocio -->
 					<div class="rounded-lg border border-neutral-200 bg-neutral-50 p-4">
-						<p class="mb-3 text-sm font-medium text-neutral-700">
-							Dirección del negocio
-						</p>
+						<p class="mb-3 text-sm font-medium text-neutral-700">Dirección del negocio</p>
 						<div class="grid gap-3 sm:grid-cols-3">
 							<div>
 								<Field
