@@ -2,6 +2,7 @@
 	interface Props {
 		label: string;
 		value: string;
+		name?: string;
 		type?: string;
 		placeholder?: string;
 		required?: boolean;
@@ -12,6 +13,7 @@
 	let {
 		label,
 		value = $bindable(),
+		name,
 		type = 'text',
 		placeholder = '',
 		required = false,
@@ -27,6 +29,7 @@
 	</span>
 	<input
 		bind:value
+		{name}
 		{type}
 		{placeholder}
 		{maxlength}

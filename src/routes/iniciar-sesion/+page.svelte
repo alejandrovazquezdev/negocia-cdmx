@@ -1,7 +1,11 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import Brand from '$lib/components/Brand.svelte';
 	import Field from '$lib/components/Field.svelte';
+	import type { ActionData } from './$types';
+
+	let { form }: { form: ActionData } = $props();
 
 	let correo = $state('');
 	let password = $state('');
@@ -24,9 +28,17 @@
 			<h1 class="mb-1 text-xl font-semibold text-neutral-900">Iniciar sesión</h1>
 			<p class="mb-6 text-sm text-neutral-500">Accede a tu panel de emprendimiento.</p>
 
-			<form class="grid gap-4" onsubmit={(e) => e.preventDefault()}>
-				<Field label="Correo" type="email" bind:value={correo} placeholder="correo@ejemplo.com" />
-				<Field label="Contraseña" type="password" bind:value={password} />
+			{#if form?.error}
+				<div
+					class="mb-4 rounded-lg border border-gob/30 bg-gob-soft px-4 py-3 text-sm text-gob-dark"
+				>
+					{form.error}
+				</div>
+			{/if}
+
+			<form method="POST" use:enhance class="grid gap-4">
+				<Field label="Correo" name="correo" type="email" bind:value={correo} placeholder="correo@ejemplo.com" />
+				<Field label="Contraseña" name="password" type="password" bind:value={password} />
 				<button
 					type="submit"
 					class="mt-2 rounded-lg bg-gob px-6 py-2.5 font-semibold text-white transition hover:bg-gob-dark"
