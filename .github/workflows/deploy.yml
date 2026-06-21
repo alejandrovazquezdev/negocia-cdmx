@@ -1,28 +1,25 @@
 name: Deploy
 
-# Collaborator pushes to main on GitHub -> the self-hosted runner on the
-# ProLiant pulls, builds, and restarts the systemd service in place.
+# Push a main en el fork -> el self-hosted runner en 192.168.0.188
+# hace pull, build, reinicia el systemd service y verifica la ruta pública.
 on:
   push:
     branches: [main]
-  workflow_dispatch: {} # lets you trigger a deploy manually from the Actions tab
+  workflow_dispatch: {}
 
-# Never run two deploys at once: a second push waits for the first to finish
-# instead of two `npm ci`/build runs fighting over the same directory.
+# Nunca correr dos deploys a la vez.
 concurrency:
   group: deploy-negocia-cdmx
   cancel-in-progress: false
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: [self-hosted, linux, x64, negocia, local-nginx]
     steps:
       - name: Pull, build & restart
         run: |
           set -euo pipefail
-          export PATH="/usr/local/lib/nodejs/node-v22.21.1-linux-x64/bin:$PATH"
-
-          cd /home/developer/negocia-cdmx
+          cd /home/alephantom/negocia-cdmx
           echo "==> Syncing working tree to origin/main"
           git fetch origin main
           git reset --hard origin/main
@@ -38,3 +35,12 @@ jobs:
 
           echo "==> Done. Current commit:"
           git --no-pager log -1 --oneline
+
+      - name: Verify local Nginx route
+        run: |
+          sleep 2
+          curl -fsSI -H "Host: negocia.vazquezalejandro.com" http://127.0.0.1/ | head -5
+
+      - name: Verify public route
+        run: |
+          curl -fsSI https://negocia.vazquezalejandro.com/ | head -5
