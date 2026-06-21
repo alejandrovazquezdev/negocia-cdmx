@@ -39,8 +39,10 @@ jobs:
       - name: Verify local Nginx route
         run: |
           sleep 2
+          set -euo pipefail
           curl -fsSI -H "Host: negocia.vazquezalejandro.com" http://127.0.0.1/ | head -5
 
       - name: Verify public route
         run: |
+          set -euo pipefail
           curl -fsSI https://negocia.vazquezalejandro.com/ | head -5
