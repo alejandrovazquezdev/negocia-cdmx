@@ -98,47 +98,99 @@ export const POST: RequestHandler = async ({ request }) => {
 Devuelve ÚNICAMENTE el objeto JSON con "titulo", "resumen" y "pasos". Nada más.`;
 
 	try {
-		const genAI = new GoogleGenerativeAI(apiKey);
-		const model = genAI.getGenerativeModel({
-			model: env.GEMINI_MODEL || 'gemini-2.5-flash',
-			systemInstruction: SYSTEM_PROMPT,
-			generationConfig: {
-				temperature: 0.2,
-				topP: 0.85,
-				maxOutputTokens: 4000,
-				responseMimeType: 'application/json'
+	// Schema forzado: Gemini garantiza JSON válido que cumple este shape.
+	// Soluciona el bug intermitente donde el modelo devolvía texto malformado
+	// y el cleanup por regex fallaba.
+	const guiaSchema = {
+		type: 'object',
+		properties: {
+			titulo: { type: 'string' },
+			resumen: { type: 'string' },
+			pasos: {
+				type: 'array',
+				minItems: 8,
+				maxItems: 14,
+				items: {
+					type: 'object',
+					properties: {
+						fase: {
+							type: 'string',
+							enum: ['Pre-apertura', 'Constitución legal', 'Trámites CDMX', 'Apertura', 'Operación']
+						},
+						numero: { type: 'integer' },
+						titulo: { type: 'string' },
+						descripcion: { type: 'string' },
+						dependencia: { type: 'string' },
+						url: { type: 'string', nullable: true },
+						costo: { type: 'string', nullable: true },
+						tiempo: { type: 'string', nullable: true },
+						advertencia: { type: 'string', nullable: true },
+						obligatorio: { type: 'boolean' }
+					},
+					required: ['fase', 'numero', 'titulo', 'descripcion', 'dependencia', 'obligatorio']
+				}
 			}
-		});
+		},
+		required: ['titulo', 'resumen', 'pasos']
+	} as const;
 
-		const result = await model.generateContent(userPrompt);
-		const raw = result.response.text();
+	const genAI = new GoogleGenerativeAI(apiKey);
+	const model = genAI.getGenerativeModel({
+		model: env.GEMINI_MODEL || 'gemini-2.5-flash',
+		systemInstruction: SYSTEM_PROMPT,
+		generationConfig: {
+			temperature: 0.2,
+			topP: 0.85,
+			maxOutputTokens: 4000,
+			responseMimeType: 'application/json',
+			responseSchema: guiaSchema
+		}
+	});
 
-		// Limpieza defensiva: quitar fences de markdown si los trae.
-		let cleaned = raw.trim();
-		const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
-		if (fence) cleaned = fence[1].trim();
-		// Extraer primer objeto JSON si hay texto extra alrededor.
-		const objMatch = cleaned.match(/\{[\s\S]*\}/);
-		if (objMatch) cleaned = objMatch[0];
-
-		let parsed: unknown;
+	// Retry defensivo: incluso con responseSchema, una corrida ocasional puede
+	// traer un array vacío o un paso con campos faltantes. Reintentamos hasta
+	// 2 veces antes de devolver error al usuario.
+	let parsed: Record<string, unknown> | null = null;
+	let lastErr: string | null = null;
+	for (let intento = 1; intento <= 2; intento++) {
 		try {
-			parsed = JSON.parse(cleaned);
-		} catch (parseErr) {
-			console.error('[guia-registro] JSON parse error. Raw output:', raw.slice(0, 400));
-			return json(
-				{ error: 'El modelo devolvió una respuesta con formato inválido. Intenta de nuevo.' },
-				{ status: 502 }
-			);
-		}
+			const result = await model.generateContent(userPrompt);
+			const raw = result.response.text();
 
-		const p = parsed as Record<string, unknown>;
-		if (!Array.isArray(p.pasos) || p.pasos.length === 0) {
-			return json({ error: 'La guía generada está incompleta. Intenta de nuevo.' }, { status: 502 });
+			// Con responseSchema, Gemini normalmente devuelve JSON limpio.
+			// Mantenemos una limpieza mínima por si llega con fences o texto extra.
+			let cleaned = raw.trim();
+			const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+			if (fence) cleaned = fence[1].trim();
+			const objMatch = cleaned.match(/\{[\s\S]*\}/);
+			if (objMatch) cleaned = objMatch[0];
+
+			const candidate = JSON.parse(cleaned) as Record<string, unknown>;
+			const pasos = candidate.pasos as unknown[] | undefined;
+			if (Array.isArray(pasos) && pasos.length >= 8) {
+				parsed = candidate;
+				break;
+			}
+			lastErr = `intento ${intento}: ${pasos?.length ?? 0} pasos (mínimo 8)`;
+		} catch (parseErr) {
+			lastErr = `intento ${intento} parse: ${(parseErr as Error).message}`;
+			console.error(`[guia-registro] ${lastErr}. Retrying…`);
 		}
+	}
+
+	if (!parsed) {
+		console.error(`[guia-registro] All retries failed. Last: ${lastErr}`);
+		return json(
+			{
+				error:
+					'No pudimos generar la guía completa. El servicio de IA está sobrecargado — intenta de nuevo en unos segundos.'
+			},
+			{ status: 502 }
+		);
+	}
 
 		// Normalizar cada paso para garantizar tipos correctos.
-		const pasos: PasoGuia[] = (p.pasos as Record<string, unknown>[]).map((paso, i) => ({
+		const pasos: PasoGuia[] = (parsed.pasos as Record<string, unknown>[]).map((paso, i) => ({
 			fase: typeof paso.fase === 'string' ? paso.fase : 'General',
 			numero: typeof paso.numero === 'number' ? paso.numero : i + 1,
 			titulo: typeof paso.titulo === 'string' ? paso.titulo : `Paso ${i + 1}`,
@@ -152,8 +204,8 @@ Devuelve ÚNICAMENTE el objeto JSON con "titulo", "resumen" y "pasos". Nada más
 		}));
 
 		const respuesta: GuiaResponse = {
-			titulo: typeof p.titulo === 'string' ? p.titulo : 'Guía de registro empresarial CDMX',
-			resumen: typeof p.resumen === 'string' ? p.resumen : '',
+			titulo: typeof parsed.titulo === 'string' ? parsed.titulo : 'Guía de registro empresarial CDMX',
+			resumen: typeof parsed.resumen === 'string' ? parsed.resumen : '',
 			pasos
 		};
 
