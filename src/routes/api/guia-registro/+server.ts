@@ -108,7 +108,7 @@ Devuelve ÚNICAMENTE el objeto JSON con "titulo", "resumen" y "pasos". Nada más
 			resumen: { type: 'string' },
 			pasos: {
 				type: 'array',
-				minItems: 8,
+				minItems: 5,
 				maxItems: 14,
 				items: {
 					type: 'object',
@@ -141,7 +141,7 @@ Devuelve ÚNICAMENTE el objeto JSON con "titulo", "resumen" y "pasos". Nada más
 		generationConfig: {
 			temperature: 0.2,
 			topP: 0.85,
-			maxOutputTokens: 4000,
+			maxOutputTokens: 8000,
 			responseMimeType: 'application/json',
 			responseSchema: guiaSchema
 		}
@@ -167,11 +167,12 @@ Devuelve ÚNICAMENTE el objeto JSON con "titulo", "resumen" y "pasos". Nada más
 
 			const candidate = JSON.parse(cleaned) as Record<string, unknown>;
 			const pasos = candidate.pasos as unknown[] | undefined;
-			if (Array.isArray(pasos) && pasos.length >= 8) {
+			if (Array.isArray(pasos) && pasos.length >= 5) {
 				parsed = candidate;
 				break;
 			}
-			lastErr = `intento ${intento}: ${pasos?.length ?? 0} pasos (mínimo 8)`;
+			lastErr = `intento ${intento}: ${pasos?.length ?? 0} pasos (mínimo 5)`;
+			console.error(`[guia-registro] ${lastErr}. Raw (first 500): ${raw.slice(0, 500)}`);
 		} catch (parseErr) {
 			lastErr = `intento ${intento} parse: ${(parseErr as Error).message}`;
 			console.error(`[guia-registro] ${lastErr}. Retrying…`);
